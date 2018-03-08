@@ -1,3 +1,13 @@
-import numpy as np
+"""import sys
+from PyQt5.QtWidgets import QApplication, QDialog
+from ui_imagedialog import Ui_ImageDialog
 
-print(np.round(np.random.uniform(0.5, 1.0), 2))
+app = QApplication(sys.argv)
+window = QDialog()
+ui = Ui_ImageDialog()
+ui.setupUi(window)
+
+window.show()
+sys.exit(app.exec_())"""
+
+
