@@ -3,7 +3,7 @@ import numpy as np
 
 from Designs import simpleCorrDesign, corrDesign, simpleGNGDesign, pretrainDesign, shatterValveTestDesign, \
     corrRandomFrequencyDesign, corrRandomFrequency2Design, corrDifficultySwitchDesign, DistanceGNGDesign, \
-    DistanceGNGRandomSwapDesign, DistanceRobotGNGDesign
+    DistanceGNGRandomSwapDesign, DistanceRobotGNGDesign, SimpleGNGPlumesDesign
 from Generation import Gen
 
 
@@ -1373,3 +1373,122 @@ class DistanceRobotGNGWidget(QtWidgets.QWidget, DistanceRobotGNGDesign.Ui_Form):
             params.append(param)
 
         return params
+
+#simple schedule generator for plume A vs plume B to test implementation of plumes in AutonoMouse
+
+class SimpleGNGPlumes(QtWidgets.QWidget, SimpleGNGPlumesDesign.Ui_Form):
+    def __init__(self, parentUi=None):
+        super(self.__class__,self).__init__()
+        self.setupUi(self)
+        self.parentUi = parentUi
+        self.valence_map = None
+
+        self.openPlumeDataButton1.clicked.connect(self.load_plume_data1)
+        self.openPlumeDataButton2.clicked.connect(self.load_plume_data2)
+
+        self.odour1rewarded = bool(self.odour1rewardedCheck.isChecked())
+
+    def generate_schedule(self, valence_map):
+        lick_fraction = float(self.lickFractionEdit.text())
+        n_valves = len(valence_map)
+
+        n_trials = int(self.nTrialsEdit.text())
+       # n_control_trials = int(self.nControlTrialsEdit.text())
+        reward_sequence = Gen.reward_sequence(n_trials) #add control trials here too
+
+        valence_map = np.array(valence_map)
+        valve_index = (np.where(valence_map == 0)[0],   #blank
+                       np.where(valence_map == 1)[0],   #odour1
+                       np.where(valence_map == 2)[0],   #odour2
+                       np.where(valence_map == 3)[0],   #blank2
+                       np.where(valence_map == 4)[0])
+
+        #odour1rewarded = bool(self.odour1rewardedCheck.isChecked())
+
+        if self.odour1rewarded:
+            rewarded_choice = valve_index[1]
+            rewarded_path = str(self.plume1DataLabel.text())
+            unrewarded_choice = valve_index[2]
+        else:
+            rewarded_choice = valve_index[2]
+            rewarded_path = str(self.plume2DataLabel.text())
+            unrewarded_choice = valve_index[1]
+            unrewarded_path = str(self.plume1DataLabel.text())
+
+        schedule = []
+        for t in range(n_trials): #add control trials here too
+            rewarded = reward_sequence[t] == 1
+
+            if rewarded:
+                odour_valve = np.random.choice(rewarded_choice, 1) + 1
+                blank_valve = np.random.choice(valve_index[0], 2, replace=False) + 1
+                data_path = rewarded_path
+            else:
+                odour_valve = np.random.choice(unrewarded_choice, 1) + 1
+                blank_valve = np.hstack((np.random.choice(valve_index[0], 1)[0] + 1, np.random.choice(valve_index[4], 1)[0] + 1))
+                data_path = unrewarded_path
+
+            schedule.append([reward_sequence[t], odour_valve, blank_valve, valence_map, lick_fraction, data_path])
+
+        return schedule, ['Rewarded', 'Odour valve', 'Blank valve', 'Valence map', 'Lick Fraction', 'Plume Data Path']
+
+    def pulse_parameters(self, trial):
+        params = list()
+
+        onset = float(self.onsetEdit.text())
+        offset = float(self.offsetEdit.text())
+        #length = float(self.trialLengthEdit.text())
+        shatter_frequency = float(self.shatterHzEdit.text())
+        data_fs = float(self.dataSamplingRateEdit.text())
+        target_max1 = float(self.targetMax1Edit.text())
+        target_max2 = float(self.targetMax2Edit.text())
+        odour_valve = trial[1]
+        blank_valve = trial[2]
+        valence_map = trial[3]
+        plume_data_path = trial[5]
+
+        for p in range(len(valence_map)):
+            param = {'type': 'Plume',
+                     'onset': onset,
+                     'offset': offset,
+                     'shatter_frequency': shatter_frequency,
+                     'data_fs': data_fs,
+                     'lick_fraction': trial[4],
+                     'target_max': target_max1,
+                     'data_path': plume_data_path[0]
+                     }
+
+            # assign correct plume to valve
+            if p+1 in odour_valve:
+                param['data_path'] = plume_data_path[p+1]
+
+                # if self.odour1rewarded:
+                #     if rewarded:
+                #         param['data_path'] = odour1_data_path
+                #         param['target_max'] = target_max1
+                #     else:
+                #         param['data_path'] = odour2_data_path
+                #         param['target_max'] = target_max2
+                #
+                # else:
+                #     if rewarded:
+                #         param['data_path'] = odour2_data_path
+                #         param['target_max'] = target_max2
+                #     else:
+                #         param['data_path'] = odour1_data_path
+                #         param['target_max'] = target_max1
+
+            #if p+1 in blank_valve:
+                #this bit will do the compensation for airflow bit
+
+            params.append(param)
+
+        return(params)
+
+    def load_plume_data1(self):
+        fname, suff = QtWidgets.QFileDialog.getOpenFileName(self, "Open File", '', '*.mat')
+        self.plume1DataLabel.setText(fname)
+
+    def load_plume_data2(self):
+        fname, suff = QtWidgets.QFileDialog.getOpenFileName(self, "Open File", '', '*.mat')
+        self.plume2DataLabel.setText(fname)
