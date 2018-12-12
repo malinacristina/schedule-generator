@@ -1,9 +1,10 @@
 from PyQt5 import QtWidgets
 import numpy as np
+import random
 
 from Designs import simpleCorrDesign, corrDesign, simpleGNGDesign, pretrainDesign, shatterValveTestDesign, \
     corrRandomFrequencyDesign, corrRandomFrequency2Design, corrDifficultySwitchDesign, DistanceGNGDesign, \
-    DistanceGNGRandomSwapDesign, DistanceRobotGNGDesign, SimpleGNGPlumesDesign
+    DistanceGNGRandomSwapDesign, DistanceRobotGNGDesign, SimpleGNGPlumesDesign, SimpleGNGVariableOnsetDesign
 from Generation import Gen
 
 
@@ -1502,3 +1503,82 @@ class SimpleGNGPlumes(QtWidgets.QWidget, SimpleGNGPlumesDesign.Ui_Form):
     def load_plume_data2(self):
         fname, suff = QtWidgets.QFileDialog.getOpenFileName(self, "Open File", '', '*.mat')
         self.plume2DataLabel.setText(fname)
+
+#variable onset
+
+class SimpleGNGVariableOnsetWidget(QtWidgets.QWidget, SimpleGNGVariableOnsetDesign.Ui_Form):
+    def __init__(self, parentUi=None):
+        super(self.__class__, self).__init__()
+        self.setupUi(self)
+
+        self.parentUi = parentUi
+
+        self.valence_map = None
+
+    def generate_schedule(self, valence_map):
+        lick_fraction = float(self.lickFractionEdit.text())
+        n_valves = len(valence_map)
+
+        n_trials = int(self.nTrialsEdit.text())
+        reward_sequence = Gen.reward_sequence(n_trials)
+
+        valence_map = np.array(valence_map)
+        valve_index = (np.where(valence_map == 0)[0],
+                       np.where(valence_map == 1)[0],
+                       np.where(valence_map == 2)[0],
+                       np.where(valence_map == 3)[0],
+                       np.where(valence_map == 4)[0])
+
+        if not bool(self.reverseValenceCheck.isChecked()):
+            rewarded_choice = valve_index[1]
+            unrewarded_choice = valve_index[2]
+        else:
+            rewarded_choice = valve_index[2]
+            unrewarded_choice = valve_index[1]
+
+        schedule = []
+        for t in range(n_trials):
+            rewarded = reward_sequence[t] == 1
+
+            if rewarded:
+                valve = np.random.choice(rewarded_choice, 1) + 1
+            else:
+                valve = np.random.choice(unrewarded_choice, 1) + 1
+
+            schedule.append([reward_sequence[t], valve, valence_map, lick_fraction])
+
+        return schedule, ['Rewarded', 'Valve', 'Valence Map', 'Lick Fraction']
+
+    def pulse_parameters(self, trial):
+        params = list()
+
+        mindelay = float(self.mindelayEdit.text())
+        maxdelay = float(self.maxdelayEdit.text())
+        delay = random.random()*(maxdelay-mindelay)
+        onset = delay + mindelay
+        offset = float(self.offsetEdit.text())
+        length = float(self.trialLengthEdit.text())
+        valve = trial[1]
+        valence_map = trial[2]
+
+        for p in range(len(valence_map)):
+            param = {'type': 'Simple',
+                     'fromDuty': False,
+                     'fromValues': True,
+                     'pulse_width': length,
+                     'pulse_delay': 0.0,
+                     'fromLength': False,
+                     'fromRepeats': True,
+                     'repeats': 0,
+                     'length': 0.0,
+                     'isClean': True,
+                     'onset': onset,
+                     'offset': offset,
+                     'lick_fraction': trial[3]}
+
+            if p + 1 in valve:
+                param['repeats'] = 1
+
+            params.append(param)
+
+        return params
