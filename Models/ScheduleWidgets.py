@@ -1409,6 +1409,7 @@ class SimpleGNGPlumes(QtWidgets.QWidget, SimpleGNGPlumesDesign.Ui_Form):
             rewarded_choice = valve_index[1]
             rewarded_path = str(self.plume1DataLabel.text())
             unrewarded_choice = valve_index[2]
+            unrewarded_path = str(self.plume2DataLabel.text())
         else:
             rewarded_choice = valve_index[2]
             rewarded_path = str(self.plume2DataLabel.text())
@@ -1429,7 +1430,6 @@ class SimpleGNGPlumes(QtWidgets.QWidget, SimpleGNGPlumesDesign.Ui_Form):
                 data_path = unrewarded_path
 
             schedule.append([reward_sequence[t], odour_valve, blank_valve, valence_map, lick_fraction, data_path])
-
         return schedule, ['Rewarded', 'Odour valve', 'Blank valve', 'Valence map', 'Lick Fraction', 'Plume Data Path']
 
     def pulse_parameters(self, trial):
@@ -1437,7 +1437,7 @@ class SimpleGNGPlumes(QtWidgets.QWidget, SimpleGNGPlumesDesign.Ui_Form):
 
         onset = float(self.onsetEdit.text())
         offset = float(self.offsetEdit.text())
-        #length = float(self.trialLengthEdit.text())
+        length = float(self.trialLengthEdit.text())
         shatter_frequency = float(self.shatterHzEdit.text())
         data_fs = float(self.dataSamplingRateEdit.text())
         target_max1 = float(self.targetMax1Edit.text())
@@ -1445,9 +1445,9 @@ class SimpleGNGPlumes(QtWidgets.QWidget, SimpleGNGPlumesDesign.Ui_Form):
         odour_valve = trial[1]
         blank_valve = trial[2]
         valence_map = trial[3]
-        plume_data_path = trial[5]
 
         for p in range(len(valence_map)):
+            # assign correct plume to valve
             param = {'type': 'Plume',
                      'onset': onset,
                      'offset': offset,
@@ -1455,12 +1455,22 @@ class SimpleGNGPlumes(QtWidgets.QWidget, SimpleGNGPlumesDesign.Ui_Form):
                      'data_fs': data_fs,
                      'lick_fraction': trial[4],
                      'target_max': target_max1,
-                     'data_path': plume_data_path[0]
                      }
-
-            # assign correct plume to valve
             if p+1 in odour_valve:
-                param['data_path'] = plume_data_path[p+1]
+                param['data_path'] = trial[5]
+                print(param['data_path'])
+            else:
+                param['type'] = 'Simple'
+                param['fromDuty'] = False
+                param['fromValues'] = True
+                param['pulse_width'] = length
+                param['pulse_delay'] = False
+                param['fromLength'] = False
+                param['fromRepeats'] = True
+                param['repeats'] = 0
+                param['length'] = 0.0
+                param['isClean'] = True
+
 
                 # if self.odour1rewarded:
                 #     if rewarded:

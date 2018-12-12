@@ -119,7 +119,7 @@ class Ui_Form(object):
         self.label_5.setText(_translate("Form", "Trial Length (s)"))
         self.offsetEdit.setText(_translate("Form", "0.1"))
         self.label.setText(_translate("Form", "Number of Trials"))
-        self.nTrialsEdit.setText(_translate("Form", "300"))
+        self.nTrialsEdit.setText(_translate("Form", "10"))
         self.label_7.setText(_translate("Form", "Odour 1 Rewarded"))
         self.label_4.setText(_translate("Form", "Trial Offset (s)"))
         self.lickFractionEdit.setText(_translate("Form", "0.1"))
