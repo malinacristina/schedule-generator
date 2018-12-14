@@ -1,6 +1,7 @@
 from PyQt5 import QtWidgets
 import numpy as np
 import random
+import os
 
 from Designs import simpleCorrDesign, corrDesign, simpleGNGDesign, pretrainDesign, shatterValveTestDesign, \
     corrRandomFrequencyDesign, corrRandomFrequency2Design, corrDifficultySwitchDesign, DistanceGNGDesign, \
@@ -1384,10 +1385,11 @@ class SimpleGNGPlumes(QtWidgets.QWidget, SimpleGNGPlumesDesign.Ui_Form):
         self.parentUi = parentUi
         self.valence_map = None
 
-        self.openPlumeDataButton1.clicked.connect(self.load_plume_data1)
-        self.openPlumeDataButton2.clicked.connect(self.load_plume_data2)
+        self.openPlumeDataButton1.clicked.connect(self.load_plume_bank1)
+        self.openPlumeDataButton2.clicked.connect(self.load_plume_bank2)
 
         self.odour1rewarded = bool(self.odour1rewardedCheck.isChecked())
+
 
     def generate_schedule(self, valence_map):
         lick_fraction = float(self.lickFractionEdit.text())
@@ -1408,14 +1410,14 @@ class SimpleGNGPlumes(QtWidgets.QWidget, SimpleGNGPlumesDesign.Ui_Form):
 
         if self.odour1rewarded:
             rewarded_choice = valve_index[1]
-            rewarded_path = str(self.plume1DataLabel.text())
-            unrewarded_choice = valve_index[2]
-            unrewarded_path = str(self.plume2DataLabel.text())
+            rewarded_paths = self.plume_bank1
+            unrewarded_choice = random.choice(valve_index[2])
+            unrewarded_paths = self.plume_bank2
         else:
             rewarded_choice = valve_index[2]
-            rewarded_path = str(self.plume2DataLabel.text())
+            rewarded_paths = self.plume_bank2
             unrewarded_choice = valve_index[1]
-            unrewarded_path = str(self.plume1DataLabel.text())
+            unrewarded_paths = self.plume_bank1
 
         schedule = []
         for t in range(n_trials): #add control trials here too
@@ -1424,11 +1426,13 @@ class SimpleGNGPlumes(QtWidgets.QWidget, SimpleGNGPlumesDesign.Ui_Form):
             if rewarded:
                 odour_valve = np.random.choice(rewarded_choice, 1) + 1
                 blank_valve = np.random.choice(valve_index[0], 2, replace=False) + 1
-                data_path = rewarded_path
+                data_path = random.choice(rewarded_paths)
             else:
                 odour_valve = np.random.choice(unrewarded_choice, 1) + 1
                 blank_valve = np.hstack((np.random.choice(valve_index[0], 1)[0] + 1, np.random.choice(valve_index[4], 1)[0] + 1))
-                data_path = unrewarded_path
+                data_path = random.choice(unrewarded_paths)
+
+            print(data_path)
 
             schedule.append([reward_sequence[t], odour_valve, blank_valve, valence_map, lick_fraction, data_path])
         return schedule, ['Rewarded', 'Odour valve', 'Blank valve', 'Valence map', 'Lick Fraction', 'Plume Data Path']
@@ -1496,13 +1500,20 @@ class SimpleGNGPlumes(QtWidgets.QWidget, SimpleGNGPlumesDesign.Ui_Form):
 
         return(params)
 
-    def load_plume_data1(self):
-        fname, suff = QtWidgets.QFileDialog.getOpenFileName(self, "Open File", '', '*.mat')
-        self.plume1DataLabel.setText(fname)
+    def load_plume_bank1(self):
+        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Select a folder:", '', QtWidgets.QFileDialog.ShowDirsOnly)
+        self.plume1DataLabel.setText(folder)
+        plume_files = os.listdir(folder)
+        self.plume_bank1 = [os.path.join(folder, i) for i in plume_files]
 
-    def load_plume_data2(self):
-        fname, suff = QtWidgets.QFileDialog.getOpenFileName(self, "Open File", '', '*.mat')
-        self.plume2DataLabel.setText(fname)
+    def load_plume_bank2(self):
+        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Select a folder:", '', QtWidgets.QFileDialog.ShowDirsOnly)
+        self.plume2DataLabel.setText(folder)
+        plume_files = os.listdir(folder)
+        self.plume_bank2 = [os.path.join(folder, i) for i in plume_files]
+
+
+
 
 #variable onset
 
