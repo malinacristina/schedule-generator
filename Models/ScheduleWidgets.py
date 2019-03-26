@@ -5,7 +5,9 @@ import os
 
 from Designs import simpleCorrDesign, corrDesign, simpleGNGDesign, pretrainDesign, shatterValveTestDesign, \
     corrRandomFrequencyDesign, corrRandomFrequency2Design, corrDifficultySwitchDesign, DistanceGNGDesign, \
-    DistanceGNGRandomSwapDesign, DistanceRobotGNGDesign, SimpleGNGPlumesDesign, SimpleGNGVariableOnsetDesign
+    DistanceGNGRandomSwapDesign, DistanceRobotGNGDesign, SimpleGNGPlumesDesign, SimpleGNGVariableOnsetDesign, \
+    PretrainPlumeBgDesign, GNGPlumeBgDesign
+
 from Generation import Gen
 
 
@@ -1413,6 +1415,7 @@ class SimpleGNGPlumes(QtWidgets.QWidget, SimpleGNGPlumesDesign.Ui_Form):
             rewarded_paths = self.plume_bank1
             unrewarded_choice = random.choice(valve_index[2])
             unrewarded_paths = self.plume_bank2
+            print(rewarded_paths)
         else:
             rewarded_choice = valve_index[2]
             rewarded_paths = self.plume_bank2
@@ -1505,6 +1508,7 @@ class SimpleGNGPlumes(QtWidgets.QWidget, SimpleGNGPlumesDesign.Ui_Form):
         self.plume1DataLabel.setText(folder)
         plume_files = os.listdir(folder)
         self.plume_bank1 = [os.path.join(folder, i) for i in plume_files]
+        print(self.plume_bank1)
 
     def load_plume_bank2(self):
         folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Select a folder:", '', QtWidgets.QFileDialog.ShowDirsOnly)
@@ -1593,3 +1597,112 @@ class SimpleGNGVariableOnsetWidget(QtWidgets.QWidget, SimpleGNGVariableOnsetDesi
             params.append(param)
 
         return params
+
+class PretrainPlumeBgWidget(QtWidgets.QWidget, PretrainPlumeBgDesign.Ui_Form):
+    def __init__(self, parentUi=None):
+        super(self.__class__, self).__init__()
+        self.setupUi(self)
+
+        self.parentUi = parentUi
+
+        self.valence_map = None
+
+        self.openPlumeDataButton.clicked.connect(self.load_plume_bank)
+
+    def generate_schedule(self, valence_map):
+        lick_fraction = float(self.lickFractionEdit.text())
+        n_valves = len(valence_map)
+
+        n_trials = int(self.nTrialsEdit.text())
+        target = int(self.targetEdit.text())
+
+        valence_map = np.array(valence_map)
+        valve_index = (np.where(valence_map == 0)[0],
+                       np.where(valence_map == 1)[0],
+                       np.where(valence_map == 2)[0],
+                       np.where(valence_map == 3)[0],
+                       np.where(valence_map == 4)[0],
+                       np.where(valence_map == 5)[0]) # blank for plume background
+
+        plume_paths = self.plume_bank
+
+        schedule = []
+        for t in range(n_trials):
+            valve = np.random.choice(valve_index[target], 1) + 1
+
+            # get plume data
+            data_path = plume_paths[0]
+            blankvalve1 = np.random.choice(valve_index[4], 1) + 1
+            blankvalve2 = np.random.choice(valve_index[5], 1) + 1
+            schedule.append([1, valve, valence_map, lick_fraction, data_path, blankvalve1, blankvalve2])
+
+
+        return schedule, ['Rewarded', 'Valve', 'Valence Map', 'Lick Fraction', 'Data Path', 'Blank Valve 1', 'Blank Valve 2']
+
+    def pulse_parameters(self, trial):
+        params = list()
+
+        onset = float(self.onsetEdit.text())
+        offset = float(self.offsetEdit.text())
+        length = float(self.trialLengthEdit.text())
+        shatter_frequency = float(self.shatterHzEdit.text())
+        data_fs = float(self.dataSamplingRateEdit.text())
+        target_max = float(self.targetMaxEdit.text())
+        valve = trial[1]
+        valence_map = trial[2]
+        data_path = trial[4]
+        plumevalve = trial[5]
+        antiplumevalve = trial[6]
+
+        for p in range(len(valence_map)):
+            param = {'type': 'Plume',
+                     'onset': onset,
+                     'offset': offset,
+                     'shatter_frequency': shatter_frequency,
+                     'data_fs': data_fs,
+                     'lick_fraction': trial[3],
+                     'target_max': target_max,
+                     }
+
+            if p + 1 in valve:
+                param['type'] = 'Simple'
+                param['fromDuty'] = False
+                param['fromValues'] = True
+                param['pulse_width'] = length
+                param['pulse_delay'] = 0.0
+                param['fromLength'] = False
+                param['fromRepeats'] = True
+                param['repeats'] = 1
+                param['length'] = 0.0
+                param['isClean'] = True
+
+            elif p + 1 in plumevalve:
+                param['data_path'] = data_path
+
+            # add antiplume noise background
+            elif p + 1 in antiplumevalve:
+                param['type'] = 'Anti Plume'
+                param['data_path'] = data_path
+
+            else:
+                param['type'] = 'Simple'
+                param['fromDuty'] = False
+                param['fromValues'] = True
+                param['pulse_width'] = length
+                param['pulse_delay'] = 0.0
+                param['fromLength'] = False
+                param['fromRepeats'] = True
+                param['repeats'] = 0
+                param['length'] = 0.0
+                param['isClean'] = True
+
+
+            params.append(param)
+
+        return params
+
+    def load_plume_bank(self):
+        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Select a folder:", '', QtWidgets.QFileDialog.ShowDirsOnly)
+        self.plumeDataLabel.setText(folder)
+        plume_files = os.listdir(folder)
+        self.plume_bank = [os.path.join(folder, i) for i in plume_files]
