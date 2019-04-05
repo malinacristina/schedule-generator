@@ -101,7 +101,7 @@ class Ui_Form(object):
         self.trialLengthEdit.setText(_translate("Form", "2.0"))
         self.label_6.setText(_translate("Form", "Lick Fraction"))
         self.onsetEdit.setText(_translate("Form", "0.1"))
-        self.label_13.setText(_translate("Form", "Valve Map Setup : 0 = Blank, 1 = Odour 1, 2 = Odour 2; plays blank plume in the background"))
+        self.label_13.setText(_translate("Form", "Valve Map Setup : 0 = Blank, 1 = Odour 1, 2 = Odour 2; plays blank plume in the background ( 4 and 5)"))
         self.label_3.setText(_translate("Form", "Simple Go / No-Go with Plumes in Background"))
         self.label_2.setText(_translate("Form", "Trial Onset (s)"))
         self.label_5.setText(_translate("Form", "Trial Length (s)"))
