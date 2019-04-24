@@ -1620,9 +1620,10 @@ class PretrainPlumeBgWidget(QtWidgets.QWidget, PretrainPlumeBgDesign.Ui_Form):
         valve_index = (np.where(valence_map == 0)[0],
                        np.where(valence_map == 1)[0],
                        np.where(valence_map == 2)[0],
-                       np.where(valence_map == 3)[0],
-                       np.where(valence_map == 4)[0],
-                       np.where(valence_map == 5)[0]) # blank for plume background
+                       np.where(valence_map == 3)[0],  # control odour 1
+                       np.where(valence_map == 4)[0],  # blank for plume background
+                       np.where(valence_map == 5)[0],  # blank for plume background
+                       np.where(valence_map == 6)[0])  # control odour 2
 
         plume_paths = self.plume_bank
 
@@ -1731,8 +1732,9 @@ class GNGPlumeBgWidget(QtWidgets.QWidget, GNGPlumeBgDesign.Ui_Form):
                        np.where(valence_map == 1)[0],  # odour 1
                        np.where(valence_map == 2)[0],  # odour 2
                        np.where(valence_map == 3)[0],  # control odour 1
-                       np.where(valence_map == 4)[0],  # blank plume valve
-                       np.where(valence_map == 5)[0])  # blank anti plume valve
+                       np.where(valence_map == 4)[0],  # blank for plume background
+                       np.where(valence_map == 5)[0],  # blank for plume background
+                       np.where(valence_map == 6)[0])  # control odour 2
 
         if bool(self.odour1rewardedCheck.isChecked()):
             rewarded_choice = valve_index[1]
