@@ -6,7 +6,8 @@ import os
 from Designs import simpleCorrDesign, corrDesign, simpleGNGDesign, pretrainDesign, shatterValveTestDesign, \
     corrRandomFrequencyDesign, corrRandomFrequency2Design, corrDifficultySwitchDesign, DistanceGNGDesign, \
     DistanceGNGRandomSwapDesign, DistanceRobotGNGDesign, SimpleGNGPlumesDesign, SimpleGNGVariableOnsetDesign, \
-    PretrainPlumeBgDesign, GNGPlumeBgDesign, GNGPlumeBgDesign, GNGPlumeBgDelaysDesign
+    PretrainPlumeBgDesign, GNGPlumeBgDesign, GNGPlumeBgDesign, GNGPlumeBgDelaysDesign, DistanceTrainingDesign, \
+    DistanceTaskOnsetJitterDesign, DistanceTraining2Design
 
 from Generation import Gen
 
@@ -1891,7 +1892,7 @@ class GNGPlumeBgDelaysWidget(QtWidgets.QWidget, GNGPlumeBgDelaysDesign.Ui_Form):
         maxdelay = float(self.maxdelayEdit.text())
         delay = random.random()*(maxdelay-mindelay)
         onset = delay + mindelay
-        offset = float(self.offsetEdit.text())
+        offset = float(self.offsetEdit.text()) + (maxdelay-onset)
         length = float(self.trialLengthEdit.text())
         shatter_frequency = float(self.shatterHzEdit.text())
         data_fs = float(self.dataSamplingRateEdit.text())
@@ -1904,8 +1905,8 @@ class GNGPlumeBgDelaysWidget(QtWidgets.QWidget, GNGPlumeBgDelaysDesign.Ui_Form):
 
         for p in range(len(valence_map)):
             param = {'type': 'Plume',
-                     'onset': onset,
-                     'offset': offset,
+                     'onset': 0.01,
+                     'offset': 0.01,
                      'shatter_frequency': shatter_frequency,
                      'data_fs': data_fs,
                      'lick_fraction': trial[3],
@@ -1923,6 +1924,8 @@ class GNGPlumeBgDelaysWidget(QtWidgets.QWidget, GNGPlumeBgDelaysDesign.Ui_Form):
                 param['repeats'] = 1
                 param['length'] = 0.0
                 param['isClean'] = True
+                param['onset'] = onset
+                param['offset'] = offset
 
             elif p + 1 in plumevalve:
                 param['data_path'] = data_path
@@ -1951,5 +1954,526 @@ class GNGPlumeBgDelaysWidget(QtWidgets.QWidget, GNGPlumeBgDelaysDesign.Ui_Form):
     def load_plume_bank(self):
         folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Select a folder:", '', QtWidgets.QFileDialog.ShowDirsOnly)
         self.plumeDataLabel1.setText(folder)
+        plume_files = os.listdir(folder)
+        self.plume_bank = [os.path.join(folder, i) for i in plume_files]
+
+
+class DistanceTrainingWidget(QtWidgets.QWidget, DistanceTrainingDesign.Ui_Form):
+    def __init__(self, parentUi=None):
+        super(self.__class__, self).__init__()
+        self.setupUi(self)
+
+        self.parentUi = parentUi
+
+        self.valence_map = None
+
+        self.openPlumeDataButton.clicked.connect(self.load_plume_bank)
+
+    def generate_schedule(self, valence_map):
+        lick_fraction = float(self.lickFractionEdit.text())
+        n_valves = len(valence_map)
+
+        n_trials = int(self.nTrialsEdit.text())
+        reward_sequence = Gen.reward_sequence(n_trials)
+
+        valence_map = np.array(valence_map)
+        valve_index = (np.where(valence_map == 0)[0],  # blank tODD valve
+                       np.where(valence_map == 1)[0],  # Box condition 1 (Far)
+                       np.where(valence_map == 2)[0],  # Box condition 2 (Near)
+                       np.where(valence_map == 3)[0],  # control odour 1
+                       np.where(valence_map == 4)[0],  # blank plume valve
+                       np.where(valence_map == 5)[0],  # blank anti plume valve
+                       np.where(valence_map == 6)[0],  # Blank box condition 1 (Far)
+                       np.where(valence_map == 7)[0],  # Blank box condition 2 (Near)
+                       np.where(valence_map == 8)[0],  # Guide valve odour 1
+                       np.where(valence_map == 9)[0],)  # Guide valve blank
+
+        guidevalvetarget = int(self.GuideValveTargetEdit.text())
+
+        if bool(self.FarBoxRewardedCheck.isChecked()):  # far is rewarded
+            rewarded_choice = valve_index[1]
+            unrewarded_choice = valve_index[2]
+            rewarded_blank = valve_index[7]
+            unrewarded_blank = valve_index[6]
+            rewarded_guide = valve_index[9]
+            unrewarded_guide = valve_index[8]
+
+        else:  # near is rewarded
+            rewarded_choice = valve_index[2]
+            unrewarded_choice = valve_index[1]
+            rewarded_blank = valve_index[6]
+            unrewarded_blank = valve_index[7]
+            rewarded_guide = valve_index[8]
+            unrewarded_guide = valve_index[9]
+
+        plume_paths = self.plume_bank
+
+        schedule = []
+        for t in range(n_trials):
+            rewarded = reward_sequence[t] == 1
+
+            if rewarded:
+                odour_box = np.random.choice(rewarded_choice, 1) + 1
+                blank_box = np.random.choice(rewarded_blank, 1) + 1
+                guide_valve = np.random.choice(rewarded_guide, 1) + 1
+            else:
+                odour_box = np.random.choice(unrewarded_choice, 1) + 1
+                blank_box = np.random.choice(unrewarded_blank, 1) + 1
+                guide_valve = np.random.choice(unrewarded_guide, 1) + 1
+
+            # get plume data
+            data_path = plume_paths[0]
+            blankvalve1 = np.random.choice(valve_index[4], 1) + 1
+            blankvalve2 = np.random.choice(valve_index[5], 1) + 1
+
+            schedule.append(
+                [reward_sequence[t], odour_box, valence_map, lick_fraction, data_path, blankvalve1, blankvalve2,
+                 blank_box, guide_valve])
+
+        return schedule, ['Rewarded', 'Odour Box', 'Valence Map', 'Lick Fraction', 'Data Path', 'Blank Valve 1',
+                          'Blank Valve 2', 'Blank Box', 'Guide Valve']
+
+    def pulse_parameters(self, trial):
+        params = list()
+
+        mindelay = float(self.mindelayEdit.text())
+        maxdelay = float(self.maxdelayEdit.text())
+        delay = random.random() * (maxdelay - mindelay)
+        onset = delay + mindelay
+        offset = float(self.offsetEdit.text())
+        length = float(self.trialLengthEdit.text())
+        shatter_frequency = float(self.shatterHzEdit.text())
+        data_fs = float(self.dataSamplingRateEdit.text())
+        target_max = float(self.targetMaxEdit.text())
+        odour_box = trial[1]
+        valence_map = trial[2]
+        data_path = trial[4]
+        plumevalve = trial[5]
+        antiplumevalve = trial[6]
+        blank_box = trial[7]
+        guide_valve = trial[8]
+        shatter_hz = float(self.GuideValveShatterFreqEdit.text())
+        target_amp = float(self.GuideValveTargetAmplitudeEdit.text())
+
+        for p in range(len(valence_map)):
+            param = {'type': 'Plume',
+                     'onset': 0.01,
+                     # plume noise starts from the beginning of the trial, odour delivery is the only one delayed
+                     'offset': offset,
+                     'shatter_frequency': shatter_frequency,
+                     'data_fs': data_fs,
+                     'lick_fraction': trial[3],
+                     'target_max': target_max,
+                     }
+
+            if p + 1 in odour_box:
+                param['type'] = 'Simple'
+                param['fromDuty'] = False
+                param['fromValues'] = True
+                param['pulse_width'] = length
+                param['pulse_delay'] = 0.0
+                param['fromLength'] = False
+                param['fromRepeats'] = True
+                param['repeats'] = 1
+                param['length'] = 0.0
+                param['isClean'] = True
+                param['onset'] = onset
+
+            elif p + 1 in blank_box:
+                param['type'] = 'Simple'
+                param['fromDuty'] = False
+                param['fromValues'] = True
+                param['pulse_width'] = length
+                param['pulse_delay'] = 0.0
+                param['fromLength'] = False
+                param['fromRepeats'] = True
+                param['repeats'] = 1
+                param['length'] = 0.0
+                param['isClean'] = True
+                param['onset'] = onset
+
+            elif p + 1 in guide_valve:
+                param['type'] = 'RandomNoise'
+                param['fromDuty'] = False
+                param['fromValues'] = True
+                param['fromLength'] = False
+                param['fromRepeats'] = True
+                param['repeats'] = 1
+                param['length'] = length
+                param['isClean'] = False
+                param['shatter_frequency'] = shatter_hz
+                param['target_duty'] = target_amp
+                param['amp_min'] = 0.0
+                param['amp_max'] = 1.0
+                param['shadow'] = False
+                param['onset'] = onset
+                param['pulse_width'] = length
+                param['pulse_delay'] = 0.0
+                # param['phase_chop'] = True
+                # param['chop_amount'] = 0.25
+
+
+            elif p + 1 in plumevalve:
+                param['data_path'] = data_path
+
+            # add antiplume noise background
+            elif p + 1 in antiplumevalve:
+                param['type'] = 'Anti Plume'
+                param['data_path'] = data_path
+
+            else:
+                param['type'] = 'Simple'
+                param['fromDuty'] = False
+                param['fromValues'] = True
+                param['pulse_width'] = length
+                param['pulse_delay'] = 0.0
+                param['fromLength'] = False
+                param['fromRepeats'] = True
+                param['repeats'] = 0
+                param['length'] = 0.0
+                param['isClean'] = True
+
+            params.append(param)
+
+        return params
+
+    def load_plume_bank(self):
+        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Select a folder:", '',
+                                                            QtWidgets.QFileDialog.ShowDirsOnly)
+        self.plumeDataLabel.setText(folder)
+        plume_files = os.listdir(folder)
+        self.plume_bank = [os.path.join(folder, i) for i in plume_files]
+
+
+class DistanceTaskOnsetJitter(QtWidgets.QWidget, DistanceTaskOnsetJitterDesign.Ui_Form):
+    def __init__(self, parentUi=None):
+        super(self.__class__, self).__init__()
+        self.setupUi(self)
+
+        self.parentUi = parentUi
+
+        self.valence_map = None
+
+        self.openPlumeDataButton.clicked.connect(self.load_plume_bank)
+
+
+    def generate_schedule(self, valence_map):
+        lick_fraction = float(self.lickFractionEdit.text())
+        n_valves = len(valence_map)
+
+        n_trials = int(self.nTrialsEdit.text())
+        reward_sequence = Gen.reward_sequence(n_trials)
+
+        valence_map = np.array(valence_map)
+        valve_index = (np.where(valence_map == 0)[0],    # blank tODD valve
+                       np.where(valence_map == 1)[0],    # Box condition 1 (Far)
+                       np.where(valence_map == 2)[0],    # Box condition 2 (Near)
+                       np.where(valence_map == 3)[0],    # control odour 1
+                       np.where(valence_map == 4)[0],    # blank plume valve
+                       np.where(valence_map == 5)[0],    # blank anti plume valve
+                       np.where(valence_map == 6)[0],    # Blank box condition 1 (Far)
+                       np.where(valence_map == 7)[0])    # Blank box condition 2 (Near)
+
+        # get onset info to be randomised for each trial later
+        mindelayNear = float(self.mindelayNearEdit.text())
+        maxdelayNear = float(self.maxdelayNearEdit.text())
+        mindelayFar = float(self.mindelayFarEdit.text())
+        maxdelayFar = float(self.maxdelayFarEdit.text())
+
+        if bool(self.FarBoxRewardedCheck.isChecked()):      # far is rewarded
+            rewarded_choice = valve_index[1]
+            unrewarded_choice = valve_index[2]
+            rewarded_blank = valve_index[7]
+            unrewarded_blank = valve_index[6]
+
+        else:                                               # near is rewarded
+            rewarded_choice = valve_index[2]
+            unrewarded_choice = valve_index[1]
+            rewarded_blank = valve_index[6]
+            unrewarded_blank = valve_index[7]
+
+
+        plume_paths = self.plume_bank
+
+        schedule = []
+        for t in range(n_trials):
+            rewarded = reward_sequence[t] == 1
+
+            # calculate onsets for near and far boxes separately
+            delayNear = random.random() * (maxdelayNear - mindelayNear)  # to be added to mindelay
+            onsetNear = round(delayNear + mindelayNear,3)
+            delayFar = random.random() * (maxdelayFar - mindelayFar)  # to be added to mindelay
+            onsetFar = round(delayNear + mindelayFar,3)
+
+
+            if rewarded:
+                odour_box = np.random.choice(rewarded_choice, 1) + 1
+                blank_box = np.random.choice(rewarded_blank, 1) + 1
+                if bool(self.FarBoxRewardedCheck.isChecked()):  # far is rewarded, S+ trial: odour box is far and blank box is near
+                    odour_box_onset = onsetFar
+                    blank_box_onset = onsetNear
+                else:
+                    odour_box_onset = onsetNear
+                    blank_box_onset = onsetFar
+            else:
+                odour_box = np.random.choice(unrewarded_choice, 1) + 1
+                blank_box = np.random.choice(unrewarded_blank, 1) + 1
+                if bool(self.FarBoxRewardedCheck.isChecked()):  # far is rewarded, S- trial: odour box is near and blank box is far
+                    odour_box_onset = onsetNear
+                    blank_box_onset = onsetFar
+                else:
+                    odour_box_onset = onsetFar
+                    blank_box_onset = onsetNear
+
+
+            # get plume data
+            data_path = plume_paths[0]
+            blankvalve1 = np.random.choice(valve_index[4], 1) + 1
+            blankvalve2 = np.random.choice(valve_index[5], 1) + 1
+
+
+            schedule.append([reward_sequence[t], odour_box, valence_map, lick_fraction, data_path, blankvalve1, blankvalve2, blank_box, odour_box_onset, blank_box_onset])
+
+        return schedule, ['Rewarded', 'Odour Box', 'Valence Map', 'Lick Fraction', 'Data Path', 'Blank Valve 1', 'Blank Valve 2', 'Blank Box', 'Odour Box Onset', 'Blank Box Onset']
+
+    def pulse_parameters(self, trial):
+        params = list()
+
+        mindelayNear = float(self.mindelayNearEdit.text())
+        maxdelayNear = float(self.maxdelayNearEdit.text())
+        delayNear = random.random()*(maxdelayNear-mindelayNear) #to be added to mindelay
+        onsetNear = delayNear + mindelayNear
+
+        mindelayFar = float(self.mindelayFarEdit.text())
+        maxdelayFar = float(self.maxdelayFarEdit.text())
+        delayFar = random.random()*(maxdelayFar-mindelayFar) #to be added to mindelay
+        onsetFar = delayNear + mindelayFar
+
+        offset = float(self.offsetEdit.text())
+        length = float(self.trialLengthEdit.text())
+        shatter_frequency = float(self.shatterHzEdit.text())
+        data_fs = float(self.dataSamplingRateEdit.text())
+        target_max = float(self.targetMaxEdit.text())
+        odour_box = trial[1]
+        valence_map = trial[2]
+        data_path = trial[4]
+        plumevalve = trial[5]
+        antiplumevalve = trial[6]
+        blank_box = trial[7]
+        odour_box_onset = trial[8]
+        blank_box_onset = trial[9]
+
+        for p in range(len(valence_map)):
+            param = {'type': 'Plume',
+                     'onset': 0.01,    # plume noise starts from the beginning of the trial, odour delivery is the only one delayed
+                     'offset': offset,
+                     'shatter_frequency': shatter_frequency,
+                     'data_fs': data_fs,
+                     'lick_fraction': trial[3],
+                     'target_max': target_max,
+                     }
+
+            if p + 1 in odour_box:
+                param['type'] = 'Simple'
+                param['fromDuty'] = False
+                param['fromValues'] = True
+                param['pulse_width'] = length
+                param['pulse_delay'] = 0.0
+                param['fromLength'] = False
+                param['fromRepeats'] = True
+                param['repeats'] = 1
+                param['length'] = 0.0
+                param['isClean'] = True
+                param['onset'] = odour_box_onset
+
+            elif p + 1 in blank_box:
+                param['type'] = 'Simple'
+                param['fromDuty'] = False
+                param['fromValues'] = True
+                param['pulse_width'] = length
+                param['pulse_delay'] = 0.0
+                param['fromLength'] = False
+                param['fromRepeats'] = True
+                param['repeats'] = 1
+                param['length'] = 0.0
+                param['isClean'] = True
+                param['onset'] = blank_box_onset
+
+            elif p + 1 in plumevalve:
+                param['data_path'] = data_path
+
+            # add antiplume noise background
+            elif p + 1 in antiplumevalve:
+                param['type'] = 'Anti Plume'
+                param['data_path'] = data_path
+
+            else:
+                param['type'] = 'Simple'
+                param['fromDuty'] = False
+                param['fromValues'] = True
+                param['pulse_width'] = length
+                param['pulse_delay'] = 0.0
+                param['fromLength'] = False
+                param['fromRepeats'] = True
+                param['repeats'] = 0
+                param['length'] = 0.0
+                param['isClean'] = True
+
+            params.append(param)
+
+        return params
+
+    def load_plume_bank(self):
+        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Select a folder:", '', QtWidgets.QFileDialog.ShowDirsOnly)
+        self.plumeDataLabel.setText(folder)
+        plume_files = os.listdir(folder)
+        self.plume_bank = [os.path.join(folder, i) for i in plume_files]
+
+class DistanceTraining2Widget(QtWidgets.QWidget, DistanceTraining2Design.Ui_Form):
+    def __init__(self, parentUi=None):
+        super(self.__class__, self).__init__()
+        self.setupUi(self)
+
+        self.parentUi = parentUi
+
+        self.valence_map = None
+
+        self.openPlumeDataButton.clicked.connect(self.load_plume_bank)
+
+    def generate_schedule(self, valence_map):
+        lick_fraction = float(self.lickFractionEdit.text())
+        n_valves = len(valence_map)
+
+        n_trials = int(self.nTrialsEdit.text())
+        reward_sequence = Gen.reward_sequence(n_trials)
+
+        valence_map = np.array(valence_map)
+        valve_index = (np.where(valence_map == 0)[0],    # blank tODD valve
+                       np.where(valence_map == 1)[0],    # Box condition 1 (Far)
+                       np.where(valence_map == 2)[0],    # Box condition 2 (Near)
+                       np.where(valence_map == 3)[0],    # control odour 1
+                       np.where(valence_map == 4)[0],    # blank plume valve
+                       np.where(valence_map == 5)[0],    # blank anti plume valve
+                       np.where(valence_map == 6)[0],    # Blank box condition 1 (Far)
+                       np.where(valence_map == 7)[0])    # Blank box condition 2 (Near)
+
+
+        if bool(self.FarBoxRewardedCheck.isChecked()):      # far is rewarded, odour only from near
+            rewarded_choice = valve_index[6]
+            unrewarded_choice = valve_index[2]
+            rewarded_blank = valve_index[7]
+            unrewarded_blank = valve_index[6]
+
+        else:                                               # near is rewarded, odour only from far
+            rewarded_choice = valve_index[7]
+            unrewarded_choice = valve_index[1]
+            rewarded_blank = valve_index[6]
+            unrewarded_blank = valve_index[7]
+
+
+        plume_paths = self.plume_bank
+
+        schedule = []
+        for t in range(n_trials):
+            rewarded = reward_sequence[t] == 1
+
+            if rewarded:
+                odour_box = np.random.choice(rewarded_choice, 1) + 1
+                blank_box = np.random.choice(rewarded_blank, 1) + 1
+            else:
+                odour_box = np.random.choice(unrewarded_choice, 1) + 1
+                blank_box = np.random.choice(unrewarded_blank, 1) + 1
+
+            # get plume data
+            data_path = plume_paths[0]
+            blankvalve1 = np.random.choice(valve_index[4], 1) + 1
+            blankvalve2 = np.random.choice(valve_index[5], 1) + 1
+
+            schedule.append([reward_sequence[t], odour_box, valence_map, lick_fraction, data_path, blankvalve1, blankvalve2, blank_box])
+
+        return schedule, ['Rewarded', 'Odour Box', 'Valence Map', 'Lick Fraction', 'Data Path', 'Blank Valve 1', 'Blank Valve 2', 'Blank Box']
+
+    def pulse_parameters(self, trial):
+        params = list()
+
+        mindelay = float(self.mindelayEdit.text())
+        maxdelay = float(self.maxdelayEdit.text())
+        delay = random.random()*(maxdelay-mindelay)
+        onset = delay + mindelay
+        offset = float(self.offsetEdit.text())
+        length = float(self.trialLengthEdit.text())
+        shatter_frequency = float(self.shatterHzEdit.text())
+        data_fs = float(self.dataSamplingRateEdit.text())
+        target_max = float(self.targetMaxEdit.text())
+        odour_box = trial[1]
+        valence_map = trial[2]
+        data_path = trial[4]
+        plumevalve = trial[5]
+        antiplumevalve = trial[6]
+        blank_box = trial[7]
+
+        for p in range(len(valence_map)):
+            param = {'type': 'Plume',
+                     'onset': 0.01,    # plume noise starts from the beginning of the trial, odour delivery is the only one delayed
+                     'offset': offset,
+                     'shatter_frequency': shatter_frequency,
+                     'data_fs': data_fs,
+                     'lick_fraction': trial[3],
+                     'target_max': target_max,
+                     }
+
+            if p + 1 in odour_box:
+                param['type'] = 'Simple'
+                param['fromDuty'] = False
+                param['fromValues'] = True
+                param['pulse_width'] = length
+                param['pulse_delay'] = 0.0
+                param['fromLength'] = False
+                param['fromRepeats'] = True
+                param['repeats'] = 1
+                param['length'] = 0.0
+                param['isClean'] = True
+                param['onset'] = onset
+
+            elif p + 1 in blank_box:
+                param['type'] = 'Simple'
+                param['fromDuty'] = False
+                param['fromValues'] = True
+                param['pulse_width'] = length
+                param['pulse_delay'] = 0.0
+                param['fromLength'] = False
+                param['fromRepeats'] = True
+                param['repeats'] = 1
+                param['length'] = 0.0
+                param['isClean'] = True
+                param['onset'] = onset
+
+            elif p + 1 in plumevalve:
+                param['data_path'] = data_path
+
+            # add antiplume noise background
+            elif p + 1 in antiplumevalve:
+                param['type'] = 'Anti Plume'
+                param['data_path'] = data_path
+
+            else:
+                param['type'] = 'Simple'
+                param['fromDuty'] = False
+                param['fromValues'] = True
+                param['pulse_width'] = length
+                param['pulse_delay'] = 0.0
+                param['fromLength'] = False
+                param['fromRepeats'] = True
+                param['repeats'] = 0
+                param['length'] = 0.0
+                param['isClean'] = True
+
+            params.append(param)
+
+        return params
+
+    def load_plume_bank(self):
+        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Select a folder:", '', QtWidgets.QFileDialog.ShowDirsOnly)
+        self.plumeDataLabel.setText(folder)
         plume_files = os.listdir(folder)
         self.plume_bank = [os.path.join(folder, i) for i in plume_files]
