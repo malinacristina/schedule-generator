@@ -1391,7 +1391,7 @@ class SimpleGNGPlumes(QtWidgets.QWidget, SimpleGNGPlumesDesign.Ui_Form):
         self.openPlumeDataButton1.clicked.connect(self.load_plume_bank1)
         self.openPlumeDataButton2.clicked.connect(self.load_plume_bank2)
 
-        self.odour1rewarded = bool(self.odour1rewardedCheck.isChecked())
+        #self.odour1rewarded = bool(self.odour1rewardedCheck.isChecked())
 
 
     def generate_schedule(self, valence_map):
@@ -1409,12 +1409,14 @@ class SimpleGNGPlumes(QtWidgets.QWidget, SimpleGNGPlumesDesign.Ui_Form):
                        np.where(valence_map == 3)[0],   #blank2
                        np.where(valence_map == 4)[0])
 
-        #odour1rewarded = bool(self.odour1rewardedCheck.isChecked())
+        odour1rewarded = bool(self.odour1rewardedCheck.isChecked())
+        print(odour1rewarded)
 
-        if self.odour1rewarded:
+
+        if odour1rewarded:
             rewarded_choice = valve_index[1]
             rewarded_paths = self.plume_bank1
-            unrewarded_choice = random.choice(valve_index[2])
+            unrewarded_choice = valve_index[2]
             unrewarded_paths = self.plume_bank2
             print(rewarded_paths)
         else:
@@ -1422,6 +1424,7 @@ class SimpleGNGPlumes(QtWidgets.QWidget, SimpleGNGPlumesDesign.Ui_Form):
             rewarded_paths = self.plume_bank2
             unrewarded_choice = valve_index[1]
             unrewarded_paths = self.plume_bank1
+            print(rewarded_paths)
 
         schedule = []
         for t in range(n_trials): #add control trials here too
@@ -1436,7 +1439,7 @@ class SimpleGNGPlumes(QtWidgets.QWidget, SimpleGNGPlumesDesign.Ui_Form):
                 blank_valve = np.hstack((np.random.choice(valve_index[0], 1)[0] + 1, np.random.choice(valve_index[4], 1)[0] + 1))
                 data_path = random.choice(unrewarded_paths)
 
-            print(data_path)
+            #print(data_path)
 
             schedule.append([reward_sequence[t], odour_valve, blank_valve, valence_map, lick_fraction, data_path])
         return schedule, ['Rewarded', 'Odour valve', 'Blank valve', 'Valence map', 'Lick Fraction', 'Plume Data Path']
