@@ -8,7 +8,8 @@ from Designs import simpleCorrDesign, corrDesign, simpleGNGDesign, pretrainDesig
     corrRandomFrequencyDesign, corrRandomFrequency2Design, corrDifficultySwitchDesign, DistanceGNGDesign, \
     DistanceGNGRandomSwapDesign, DistanceRobotGNGDesign, SimpleGNGPlumesDesign, SimpleGNGVariableOnsetDesign, \
     PretrainPlumeBgDesign, GNGPlumeBgDesign, GNGPlumeBgDesign, GNGPlumeBgDelaysDesign, DistanceTrainingDesign, \
-    DistanceTaskOnsetJitterDesign, DistanceTraining2Design, CorrelationGNGNaturalPlumesDesign
+    DistanceTaskOnsetJitterDesign, DistanceTraining2Design, CorrelationGNGNaturalPlumesDesign, CorrelationGNGNaturalPlumes2Design
+
 
 from Generation import Gen
 
@@ -2621,6 +2622,177 @@ class CorrelationGNGNaturalPlumes(QtWidgets.QWidget, CorrelationGNGNaturalPlumes
             params.append(param)
 
         return(params)
+
+    def load_corr_plumes(self):
+        # do the stuff when the button is clicked: load a pair of plumes as params
+        corr_file = QtWidgets.QFileDialog.getOpenFileName()
+        corr_file = corr_file[0]
+        self.CorrPlumesLabel.setText(corr_file)
+        self.corr_plumes = pickle.Unpickler(open(corr_file, 'rb')).load()
+
+
+    def load_uncorr_plumes(self):
+        uncorr_file = QtWidgets.QFileDialog.getOpenFileName()
+        uncorr_file = uncorr_file[0]
+        self.UncorrPlumesLabel.setText(uncorr_file)
+        self.uncorr_plumes = pickle.Unpickler(open(uncorr_file, 'rb')).load()
+
+class CorrelationGNGNaturalPlumes2(QtWidgets.QWidget, CorrelationGNGNaturalPlumes2Design.Ui_Form):
+    def __init__(self, parentUi=None):
+        super(self.__class__, self).__init__()
+        self.setupUi(self)
+        self.parentUi = parentUi
+        self.valence_map = None
+
+        self.CorrPlumesButton.clicked.connect(self.load_corr_plumes)
+        self.UncorrPlumesButton.clicked.connect(self.load_uncorr_plumes)
+
+    def generate_schedule(self, valence_map):
+        lick_fraction = float(self.lickFractionEdit.text())
+        n_valves = len(valence_map)
+
+        n_trials = int(self.nTrialsEdit.text())
+        # n_control_trials = int(self.nControlTrialsEdit.text())
+        reward_sequence = Gen.reward_sequence(n_trials)  # add control trials here too
+
+        valence_map = np.array(valence_map)
+        valve_index = (np.where(valence_map == 0)[0],  # blank
+                       np.where(valence_map == 1)[0],  # odour1
+                       np.where(valence_map == 2)[0],  # odour2
+                       np.where(valence_map == 3)[0],
+                       np.where(valence_map == 4)[0])  # blank2
+
+        CorrRewarded = bool(self.CorrRewardedCheck.isChecked())  # tick if S+ is correlated,
+        # untick for S+ is uncorrelated
+
+        if CorrRewarded:
+            rewarded_plumes = self.corr_plumes
+            unrewarded_plumes = self.uncorr_plumes
+            correlated = reward_sequence
+            print(rewarded_plumes)
+        else:
+            rewarded_plumes = self.uncorr_plumes
+            unrewarded_plumes = self.corr_plumes
+            correlated = (reward_sequence * (-1)) + 1
+            print(rewarded_plumes)
+
+        # MAKE PLUME PAIR SEQUENCE
+        number_pairs = len(rewarded_plumes)
+        print(number_pairs)
+        plume_pair_sequence = list()
+        j = 0
+        for i in range(0, n_trials):
+            plume_pair_sequence.append(j)
+            if j == number_pairs - 1:
+                j = 0
+            else:
+                j += 1
+        random.shuffle(plume_pair_sequence)
+
+        # add jitter trials
+        # if we want to jitter target_max around the values in the input file
+        self.AddJitter = bool(self.TargetMaxJitterCheck.isChecked())
+
+        schedule = []
+        for t in range(n_trials):  # add control trials here too
+            rewarded = reward_sequence[t] == 1
+            o1_valve = np.random.choice(valve_index[1], 1) + 1
+            o2_valve = np.random.choice(valve_index[2], 1) + 1
+            b1_valve = np.random.choice(valve_index[0], 1) + 1  # keeping the two blank valves separate in case
+            b2_valve = np.random.choice(valve_index[4], 1) + 1  # flow compensation is position dependent
+
+            if rewarded:
+                plume1 = rewarded_plumes[plume_pair_sequence[t]][0]
+                plume2 = rewarded_plumes[plume_pair_sequence[t]][1]
+            else:
+                plume1 = unrewarded_plumes[plume_pair_sequence[t]][0]
+                plume2 = unrewarded_plumes[plume_pair_sequence[t]][1]
+
+            if self.AddJitter:
+                jitterMin = float(self.MinJitterEdit.text())
+                jitterMax = float(self.MaxJitterEdit.text())
+                jitter1 = random.random() * (jitterMax - jitterMin)
+                target_max1 = 1 - jitter1
+                jitter2 = random.random() * (jitterMax - jitterMin)
+                target_max2 = 1 - jitter2
+                print('Jitter')
+            else:
+                target_max1 = plume1['target_max']
+                target_max2 = plume2['target_max']
+                print('No jitter')
+
+            schedule.append([reward_sequence[t], correlated[t], o1_valve, o2_valve, b1_valve, b2_valve,
+                             plume1, plume2, valence_map, lick_fraction, target_max1, target_max2])
+        return schedule, ['Rewarded', 'Correlated', 'Odour 1 valve', 'Odour 2 valve', 'Blank  1 valve',
+                              'Blank 2 valve',
+                              'Plume 1', 'Plume 2', 'Valence map', 'Lick Fraction', 'target_max1', 'target_max2']
+
+    def pulse_parameters(self, trial):
+        params = list()
+        onset = float(self.onsetEdit.text())
+        offset = float(self.offsetEdit.text())
+        length = float(self.trialLengthEdit.text())
+        o1_valve = trial[2]
+        o2_valve = trial[3]
+        b1_valve = trial[4]
+        b2_valve = trial[5]
+        plume1 = trial[6]
+        plume2 = trial[7]
+        valence_map = trial[8]
+        lick_fraction = trial[9]
+        target_max1 = trial[10]
+        target_max2 = trial[11]
+
+        for p in range(len(valence_map)):
+            # assign correct plume to valve
+            param = {'type': 'Plume',
+                     'onset': onset,
+                     'offset': offset,
+                     'lick_fraction': lick_fraction
+                     }
+
+            if p + 1 in o1_valve:
+                param['shatter_frequency'] = plume1['shatter_frequency']
+                param['data_fs'] = plume1['data_fs']
+                param['data_path'] = plume1['data_path']
+                param['target_max'] = target_max1
+                print(param)
+            elif p + 1 in o2_valve:
+                param['shatter_frequency'] = plume2['shatter_frequency']
+                param['data_fs'] = plume2['data_fs']
+                param['data_path'] = plume2['data_path']
+                param['target_max'] = target_max2
+                print(param)
+            elif p + 1 in b1_valve:
+                param['type'] = 'Anti Plume'
+                param['shatter_frequency'] = plume1['shatter_frequency']
+                param['data_fs'] = plume1['data_fs']
+                param['data_path'] = plume1['data_path']
+                param['target_max'] = target_max1
+                print(param)
+            elif p + 1 in b2_valve:
+                param['type'] = 'Anti Plume'
+                param['shatter_frequency'] = plume2['shatter_frequency']
+                param['data_fs'] = plume2['data_fs']
+                param['data_path'] = plume2['data_path']
+                param['target_max'] = target_max2
+                print(param)
+            else:
+                param['type'] = 'Simple'
+                param['fromDuty'] = False
+                param['fromValues'] = True
+                param['pulse_width'] = length
+                param['pulse_delay'] = False
+                param['fromLength'] = False
+                param['fromRepeats'] = True
+                param['repeats'] = 0
+                param['length'] = 0.0
+                param['isClean'] = True
+
+            params.append(param)
+
+
+        return (params)
 
     def load_corr_plumes(self):
         # do the stuff when the button is clicked: load a pair of plumes as params
